@@ -1,0 +1,3 @@
+
+AudioCompass	KEYWORD1
+getDirection	KEYWORD2
