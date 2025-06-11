@@ -1,41 +1,53 @@
-
 # 🎧 AudioCompass
 
-**AudioCompass** is an Arduino-compatible library for **ESP32-S3** boards with **two I2S microphones** that detects the **direction of incoming sound** using a real **TinyML model** and **MFCC feature extraction**.
-
-It outputs one of the four directions:
-- `"Front"`
-- `"Back"`
-- `"Left"`
-- `"Right"`
+**AudioCompass** is an open-source Arduino library for **ESP32-S3** boards that detects the **direction of sound** using two **I2S microphones**, **MFCC feature extraction**, and a **TinyML model**. It tells you if a sound came from the **Front**, **Back**, **Left**, or **Right**.
 
 ---
 
 ## 🚀 Features
 
-- ✅ Dual I2S microphone input (e.g., INMP441)
-- ✅ Real-time audio capture & buffering
-- ✅ MFCC feature extraction using CMSIS-DSP
-- ✅ TinyML model trained on directional audio features
-- ✅ TFLite Micro inference on-device (no internet or PC needed)
-- ✅ Clean Arduino API: `AudioCompass.getDirection()`
-- ✅ Fully compatible with Arduino Library Manager
+- ✅ Dual **I2S microphone input** (e.g., INMP441)
+- ✅ Real-time **audio buffering** using I2S
+- ✅ **MFCC feature extraction** using CMSIS-DSP
+- ✅ Embedded **TinyML model** for sound direction
+- ✅ Efficient **TensorFlow Lite Micro** inference
+- ✅ Simple Arduino API: `AudioCompass.getDirection()`
+- ✅ Fully Arduino Library Manager compatible
 
 ---
 
-## 🔌 Hardware Required
+## 🔌 Hardware Requirements
 
-- 1x **ESP32-S3** board (with I2S support)
-- 2x **I2S microphones** (e.g. INMP441)
-- Wires & headers
+| Component      | Quantity | Notes                          |
+|----------------|----------|--------------------------------|
+| ESP32-S3 Board | 1        | e.g., ESP32-S3 DevKit, etc.    |
+| I2S Mic        | 2        | e.g., INMP441 or SPH0645       |
+| Jumper wires   | —        | To connect mics to I2S pins    |
 
 ---
 
-## 📦 Installation
+## 📡 Wiring Example (ESP32-S3 + 2x INMP441)
 
-1. Download the latest release of `AudioCompass.zip`
-2. Open Arduino IDE → **Sketch > Include Library > Add .ZIP Library**
-3. Select `AudioCompass.zip`
+### Mic 1 (Left side):
+| INMP441 Pin | ESP32-S3 Pin |
+|-------------|--------------|
+| GND         | GND          |
+| VCC         | 3.3V         |
+| WS          | GPIO 15      |
+| SCK         | GPIO 14      |
+| SD          | GPIO 32      |
+
+### Mic 2 (Right side):
+| INMP441 Pin | ESP32-S3 Pin |
+|-------------|--------------|
+| GND         | GND          |
+| VCC         | 3.3V         |
+| WS          | GPIO 15 *(shared)* |
+| SCK         | GPIO 14 *(shared)* |
+| SD          | GPIO 33      |
+
+> ✅ The `WS` (word select) and `SCK` (clock) lines are shared between both microphones.  
+> `SD` (data line) must be unique for each mic.
 
 ---
 
@@ -45,89 +57,70 @@ It outputs one of the four directions:
 #include <AudioCompass.h>
 
 void setup() {
-  Serial.begin(115200);
-  AudioCompass.begin();
+  Serial.begin(115200);
+  AudioCompass.begin();
 }
 
 void loop() {
-  String direction = AudioCompass.getDirection();
-  Serial.println("Detected Direction: " + direction);
-  delay(500);
+  String direction = AudioCompass.getDirection();
+  Serial.println("Detected Direction: " + direction);
+  delay(500);
 }
 ````
-
 ---
 
-## 🧠 Model Training Process
+## 🧠 Model Training Overview
+The TinyML model was trained using real audio recorded from a stereo mic setup. Here's the process:
 
-The included TFLite model was trained using synthetic and real audio captured from a stereo microphone setup. Here's how it was done:
+## 📊 1. Data Collection
+Claps/beeps/taps were played from four angles (Front, Back, Left, Right)
 
-### 🔉 1. Data Collection
+Audio captured using two I2S mics ~20–40cm apart
 
-* 2x I2S microphones were placed **20–40 cm apart**
-* Sounds (e.g., clap, tap, beep) were played from:
+Sampled at 16kHz
 
-  * Front (0°)
-  * Left (90°)
-  * Right (270°)
-  * Back (180°)
-* Audio was recorded at **16 kHz**, mono or stereo depending on configuration
-* Data was labeled accordingly and split into training/validation
+## 🧮 2. Feature Extraction
+13 MFCCs per frame
 
-### 📊 2. Feature Extraction
+30ms window, 10ms step
 
-* Extracted **13 MFCCs** per frame
-* Window size: 30 ms
-* Frame step: 10 ms
-* Normalized to 0–1 float range
+Normalized values
 
-### 🧠 3. Model Architecture (TensorFlow)
-
-```python
+## 🤖 3. Model Architecture
+python
+Copy
+Edit
 model = tf.keras.Sequential([
-    tf.keras.layers.Input(shape=(N_MFCC,)),
-    tf.keras.layers.Dense(16, activation='relu'),
-    tf.keras.layers.Dense(4, activation='softmax')
+  tf.keras.layers.Input(shape=(N_MFCC,)),
+  tf.keras.layers.Dense(16, activation='relu'),
+  tf.keras.layers.Dense(4, activation='softmax')
 ])
-model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-```
+## 💾 4. Deployment
+Trained model exported to .tflite
 
-### 🔁 4. Conversion to TFLite
+Converted to .h with xxd
 
-```bash
-tflite_convert \
-  --keras_model_file=direction_model.h5 \
-  --output_file=direction_model.tflite \
-  --optimize \
-  --target_ops=TFLITE_BUILTINS_INT8
-```
+Inference performed using TensorFlow Lite Micro
 
-### 🔀 5. Convert to C for Arduino
+## 🧪 Inference Output
+Calling AudioCompass.getDirection() will return a String:
 
-```bash
-xxd -i direction_model.tflite > model_data.h
-```
+"Front"
 
----
+"Back"
 
-## 🧪 Inference & Output
+"Left"
 
-The function `AudioCompass.getDirection()`:
+"Right"
 
-1. Captures a 1-second buffer from the mics
-2. Extracts MFCCs
-3. Runs inference on the TFLite Micro model
-4. Returns a string: `"Front"`, `"Back"`, `"Left"`, or `"Right"`
+These values are printed to Serial or can be used in your own logic.
 
----
-
-## 📁 Library Contents
-
+## 📁 Folder Structure
 | File                              | Purpose                            |
 | --------------------------------- | ---------------------------------- |
-| `src/AudioCompass.h/.cpp`         | Library implementation             |
+| `examples/AudioDirectionDemo.ino` | Simple working example           |
 | `src/model_data.h`                | Embedded TFLite model as a C array |
-| `examples/AudioDirectionDemo.ino` | Simple working example             |
+| `src/AudioCompass.h/.cpp`         | Library implementation            |
 | `library.properties`              | Arduino metadata                   |
 | `keywords.txt`                    | Arduino IDE keyword coloring       |
 | `README.md`                       | This documentation                 |
@@ -135,55 +128,47 @@ The function `AudioCompass.getDirection()`:
 
 ---
 
-## 📜 License
+## 📥 Installation
+You can install this library via:
 
-This project is released under the **MIT License**.
+Arduino Library Manager (Recommended)
+
+Or manually:
+
+Download AudioCompass.zip
+
+Arduino IDE > Sketch > Include Library > Add .ZIP Library
+
+## 📜 License
+sql
+Copy
+Edit
 MIT License
 
 Copyright (c) 2025 Herobrine Pixel
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the “Software”), to deal
-in the Software without restriction, including without limitation the rights to
-use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software is furnished to do so,
-subject to the following conditions:
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to deal in the Software without restriction...
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-
----
-
-## 🧠 Want to Train Your Own Model?
-
-You can train your own directional model using:
-
-* [TensorFlow](https://www.tensorflow.org/)
-* [Edge Impulse](https://www.edgeimpulse.com/)
-* [Python scripts for I2S audio capture](https://github.com/espressif/esp-idf-examples)
-
-Let me know if you want a training notebook or scripts!
-
----
+[Full license text included in LICENSE file]
+## 🙌 Credits
+Developed by Herobrine Pixel with support from the OpenAI team.
+Includes CMSIS-DSP and TensorFlow Lite Micro runtime.
 
 ## 🔗 Useful Resources
+ESP32 I2S Docs
 
-* [TFLite Micro](https://www.tensorflow.org/lite/microcontrollers)
-* [ESP32-S3 Datasheet](https://www.espressif.com/en/products/socs/esp32-s3)
-* [CMSIS-DSP](https://arm-software.github.io/CMSIS_5/DSP/html/index.html)
-* [Edge Impulse Studio](https://studio.edgeimpulse.com/)
+CMSIS-DSP Library
 
----
+TensorFlow Lite for Microcontrollers
 
-**Developed by Herobrine Pixel**
-*2025*
+Edge Impulse Studio
+
+
+
+
+
+
+
+
+
 
